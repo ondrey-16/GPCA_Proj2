@@ -12,6 +12,19 @@ void Graph::pushEdge(int start, int end) {
 	this->graph[start].push_back(end);
 }
 
+void Graph::transformGraph() {
+	this->N = (int)this->graph.size();
+	this->offsets.resize(this->N + 1);
+	int count = 0;
+	for (int i = 0; i < this->N; i++) {
+		offsets[i] = count;
+		for (int j : this->graph[i]) {
+			neighbours.push_back(j);
+			count++;
+		}
+	}
+}
+
 bool Graph::readGraphFromFile(std::string filename) {
 	std::ifstream file(filename);
 
@@ -21,15 +34,17 @@ bool Graph::readGraphFromFile(std::string filename) {
 	}
 
 	int start, end;
+	this->EdgeCount = 0;
 	while (file >> start >> end) {
 		pushEdge(start, end);
+		this->EdgeCount++;
 	}
 
 	if (!file.eof()) {
 		std::cerr << "Reading from file error\n";
 		return false;
 	}
-
+	transformGraph();
 	return true;
 }
 
@@ -38,8 +53,8 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 		return std::list<int>{start};
 	}
 
-	std::vector<bool> visited(this->graph.size(), false);
-	std::vector<int> parents(this->graph.size(), -1);
+	std::vector<bool> visited(this->N, false);
+	std::vector<int> parents(this->N, -1);
 
 	std::list<int> path;
 	std::queue<int> Q;
@@ -53,7 +68,8 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 			break;
 		}
 
-		for (int w : this->graph[v]) {
+		for (int i = this->offsets[v]; i < this->offsets[v + 1]; i++) {
+			int w = this->neighbours[i];
 			if (!visited[w]) {
 				Q.push(w);
 				visited[w] = true;

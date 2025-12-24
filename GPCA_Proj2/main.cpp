@@ -1,6 +1,9 @@
 #include "graph.h"
+#include "kernel.cuh"
 #include <iostream>
 #include <string>
+
+int BFSCPU(Graph& graph, int start, int end);
 
 int main(int argc, char** argv) {
 	if (argc != 4) {
@@ -23,11 +26,18 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	BFSCPU(graph, start, end);
+	BFSGPU1(graph, start, end);
+
+	return 0;
+}
+
+int BFSCPU(Graph& graph, int start, int end) {
 	auto bfsVertices = graph.BFSCPU(start, end);
 
 	for (int u : bfsVertices) {
 		std::cout << u << " ";
 	}
-
+	std::cout << std::endl;
 	return 0;
 }

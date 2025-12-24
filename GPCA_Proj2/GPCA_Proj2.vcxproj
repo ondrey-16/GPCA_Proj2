@@ -81,6 +81,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="graph.h" />
+    <ClInclude Include="kernel.cuh" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="graph.cpp" />
