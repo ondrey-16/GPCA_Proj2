@@ -17,7 +17,7 @@ public:
 	std::vector<int> neighbours;
 	std::vector<int> offsets;
 
-	bool readGraphFromFile(std::string filename);
+	bool readGraphFromFile(const char* filename);
 	std::list<int> BFSCPU(int start, int end);
 	friend std::ostream& operator<<(std::ostream& out, const Graph& g);
 };

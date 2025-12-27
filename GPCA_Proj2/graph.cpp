@@ -23,26 +23,28 @@ void Graph::transformGraph() {
 			count++;
 		}
 	}
+	offsets[this->N] = count;
 }
 
-bool Graph::readGraphFromFile(std::string filename) {
-	std::ifstream file(filename);
+bool Graph::readGraphFromFile(const char* filename) {
+	FILE* file = fopen(filename, "r");
 
-	if (!file.is_open()) {
+	if (file == nullptr) {
 		std::cerr << "Cannot open the file\n";
 		return false;
 	}
 
 	int start, end;
+	char buff[256];
 	this->EdgeCount = 0;
-	while (file >> start >> end) {
-		pushEdge(start, end);
-		this->EdgeCount++;
-	}
-
-	if (!file.eof()) {
-		std::cerr << "Reading from file error\n";
-		return false;
+	while (fgets(buff, sizeof(buff), file)) {
+		if (buff[0] == '#') {
+			continue;
+		}
+		else if (sscanf(buff, "%d %d", &start, &end) == 2) {
+			pushEdge(start, end);
+			this->EdgeCount++;
+		}
 	}
 	transformGraph();
 	return true;
@@ -53,13 +55,16 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 		return std::list<int>{start};
 	}
 
-	std::vector<bool> visited(this->N, false);
-	std::vector<int> parents(this->N, -1);
+	int* parents = new int[this->N];
+
+	for (int i = 0; i < this->N; i++) {
+		parents[i] = -1;
+	}
 
 	std::list<int> path;
 	std::queue<int> Q;
 	Q.push(start);
-	visited[start] = true;
+	parents[start] = -2;
 
 	while (!Q.empty()) {
 		int v = Q.front();
@@ -70,24 +75,26 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 
 		for (int i = this->offsets[v]; i < this->offsets[v + 1]; i++) {
 			int w = this->neighbours[i];
-			if (!visited[w]) {
+			if (parents[w] == -1) {
 				Q.push(w);
-				visited[w] = true;
 				parents[w] = v;
 			}
 		}
 	}
 
-	if (!visited[end]) {
+	if (parents[end] == -1) {
 		return path;
 	}
 
 	int u = end;
-
-	while (u != -1) {
+	path.push_front(u);
+	u = parents[u];
+	while (u != -1 && u != -2) {
 		path.push_front(u);
 		u = parents[u];
 	}
+
+	delete[] parents;
 
 	return path;
 }

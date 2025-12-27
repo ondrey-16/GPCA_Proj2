@@ -1,9 +1,9 @@
 ﻿#include "kernel.cuh"
 
-__global__ void BFS1Kernel(int* d_neighbours, int* d_offsets, int* d_parents, int* d_visited, int* d_currentFrontier, int* d_nextFrontier,
-	int* d_currentFrontierSize, int* d_nextFrontierSize) {
+__global__ void BFS1Kernel(int* d_neighbours, int* d_offsets, int* d_parents, int* d_currentFrontier, int* d_nextFrontier,
+	int d_currentFrontierSize, int* d_nextFrontierSize) {
 	int tid = blockDim.x * blockIdx.x + threadIdx.x;
-	if (tid >= *d_currentFrontierSize) {
+	if (tid >= d_currentFrontierSize) {
 		return;
 	}
 
@@ -11,8 +11,7 @@ __global__ void BFS1Kernel(int* d_neighbours, int* d_offsets, int* d_parents, in
 
 	for (int i = d_offsets[u]; i < d_offsets[u + 1]; i++) {
 		int v = d_neighbours[i];
-		if (atomicCAS(&d_visited[v], 0, 1) == 0) {
-			d_parents[v] = u;
+		if (atomicCAS(&d_parents[v], -1, u) == -1) {
 			int pos = atomicAdd(d_nextFrontierSize, 1);
 			d_nextFrontier[pos] = v;
 		}
@@ -22,11 +21,9 @@ __global__ void BFS1Kernel(int* d_neighbours, int* d_offsets, int* d_parents, in
 int BFSGPU1(Graph& graph, int start, int end) {
 	d_Ptrs dPtrs;
 
-	int currentFrontierSize;
+	int frontierSize;
 	int* parents = new int[graph.N];
-	int* visited = new int[graph.N];
-	int* currentFrontier = new int[graph.N];
-	int* nextFrontier = new int[graph.N];
+	int* frontier = new int[graph.N];
 	int* neighbours = new int[graph.EdgeCount];
 	int* offsets = new int[graph.N + 1];
 	std::copy(graph.neighbours.begin(), graph.neighbours.end(), neighbours);
@@ -35,9 +32,8 @@ int BFSGPU1(Graph& graph, int start, int end) {
 
 	for (int i = 0; i < graph.N; i++) {
 		parents[i] = -1;
-		visited[i] = 0;
 	}
-	visited[start] = 1;
+	parents[start] = -2;
 
 	if (cudaCheckStatus(cudaMalloc((void**)&dPtrs.d_currentFrontier, sizeof(int) * graph.N), dPtrs, "cudaMalloc error")) {
 		return 1;
@@ -54,18 +50,12 @@ int BFSGPU1(Graph& graph, int start, int end) {
 	if (cudaCheckStatus(cudaMalloc((void**)&dPtrs.d_parents, sizeof(int) * graph.N), dPtrs, "cudaMalloc error")) {
 		return 1;
 	}
-	if (cudaCheckStatus(cudaMalloc((void**)&dPtrs.d_visited, sizeof(int) * graph.N), dPtrs, "cudaMalloc error")) {
-		return 1;
-	}
-	if (cudaCheckStatus(cudaMalloc((void**)&dPtrs.d_currentFrontierSize, sizeof(int)), dPtrs, "cudaMalloc error")) {
-		return 1;
-	}
 	if (cudaCheckStatus(cudaMalloc((void**)&dPtrs.d_nextFrontierSize, sizeof(int)), dPtrs, "cudaMalloc error")) {
 		return 1;
 	}
 
-	currentFrontierSize = 1;
-	currentFrontier[0] = start;
+	frontierSize = 1;
+	frontier[0] = start;
 
 	if (cudaCheckStatus(cudaMemcpy(dPtrs.d_neighbours, neighbours, sizeof(int) * graph.EdgeCount, cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
 		return 1;
@@ -76,29 +66,20 @@ int BFSGPU1(Graph& graph, int start, int end) {
 	if (cudaCheckStatus(cudaMemcpy(dPtrs.d_parents, parents, sizeof(int) * graph.N, cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
 		return 1;
 	}
-	if (cudaCheckStatus(cudaMemcpy(dPtrs.d_visited, visited, sizeof(int) * graph.N, cudaMemcpyHostToDevice), dPtrs, "cudaMemset error")) {
-		return 1;
-	}
 
 	dim3 blockDim(256);
 
-	while (currentFrontierSize) {
-		if (cudaCheckStatus(cudaMemcpy(dPtrs.d_currentFrontier, currentFrontier, sizeof(int) * graph.N, cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
-			return 1;
-		}
-		if (cudaCheckStatus(cudaMemcpy(dPtrs.d_nextFrontier, nextFrontier, sizeof(int) * graph.N, cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
-			return 1;
-		}
-		if (cudaCheckStatus(cudaMemcpy(dPtrs.d_currentFrontierSize, &currentFrontierSize, sizeof(int), cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
+	while (frontierSize) {
+		if (cudaCheckStatus(cudaMemcpy(dPtrs.d_currentFrontier, frontier, sizeof(int) * frontierSize, cudaMemcpyHostToDevice), dPtrs, "cudaMemcpy error")) {
 			return 1;
 		}
 		if (cudaCheckStatus(cudaMemset(dPtrs.d_nextFrontierSize, 0, sizeof(int)), dPtrs, "cudaMemcpy error")) {
 			return 1;
 		}
 
-		dim3 gridDim((currentFrontierSize + blockDim.x - 1) / blockDim.x);
-		BFS1Kernel << <gridDim, blockDim >> > (dPtrs.d_neighbours, dPtrs.d_offsets, dPtrs.d_parents, dPtrs.d_visited, dPtrs.d_currentFrontier,
-			dPtrs.d_nextFrontier, dPtrs.d_currentFrontierSize, dPtrs.d_nextFrontierSize);
+		dim3 gridDim((frontierSize + blockDim.x - 1) / blockDim.x);
+		BFS1Kernel << <gridDim, blockDim >> > (dPtrs.d_neighbours, dPtrs.d_offsets, dPtrs.d_parents, dPtrs.d_currentFrontier,
+			dPtrs.d_nextFrontier, frontierSize, dPtrs.d_nextFrontierSize);
 
 		auto cudaStatus = cudaDeviceSynchronize();
 		if (cudaCheckStatus(cudaStatus, dPtrs, "BFS1Kernel error")) {
@@ -106,30 +87,30 @@ int BFSGPU1(Graph& graph, int start, int end) {
 			return 1;
 		}
 
-		if (cudaCheckStatus(cudaMemcpy(currentFrontier, dPtrs.d_currentFrontier, sizeof(int) * graph.N, cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
+		if (cudaCheckStatus(cudaMemcpy(&frontierSize, dPtrs.d_nextFrontierSize, sizeof(int), cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
 			return 1;
 		}
-		if (cudaCheckStatus(cudaMemcpy(nextFrontier, dPtrs.d_nextFrontier, sizeof(int) * graph.N, cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
+		if (cudaCheckStatus(cudaMemcpy(frontier, dPtrs.d_nextFrontier, sizeof(int) * frontierSize, cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
 			return 1;
 		}
-		if (cudaCheckStatus(cudaMemcpy(parents, dPtrs.d_parents, sizeof(int) * graph.N, cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
-			return 1;
-		}
-		if (cudaCheckStatus(cudaMemcpy(&currentFrontierSize, dPtrs.d_nextFrontierSize, sizeof(int), cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
+		if (cudaCheckStatus(cudaMemcpy(parents + end, dPtrs.d_parents + end, sizeof(int), cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
 			return 1;
 		}
 
 		if (parents[end] != -1) {
+			if (cudaCheckStatus(cudaMemcpy(parents, dPtrs.d_parents, sizeof(int) * graph.N, cudaMemcpyDeviceToHost), dPtrs, "cudaMemcpy error")) {
+				return 1;
+			}
 			break;
 		}
-
-		std::swap(currentFrontier, nextFrontier);
 	}
 
 	if (parents[end] != -1) {
 		int u = end;
 
-		while (u != -1) {
+		path.push_front(u);
+		u = parents[u];
+		while (u != -1 && u != -2) {
 			path.push_front(u);
 			u = parents[u];
 		}
@@ -141,14 +122,14 @@ int BFSGPU1(Graph& graph, int start, int end) {
 
 	freeCudaMemory(dPtrs);
 	delete[] parents;
-	delete[] visited;
-	delete[] currentFrontier;
-	delete[] nextFrontier;
+	delete[] frontier;
 	delete[] neighbours;
 	delete[] offsets;
+
+	return 0;
 }
 
-int cudaCheckStatus(cudaError_t cudaStatus, d_Ptrs dPtrs, const char* errorMessage) {
+int cudaCheckStatus(cudaError_t cudaStatus, d_Ptrs& dPtrs, const char* errorMessage) {
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << errorMessage;
 		freeCudaMemory(dPtrs);
@@ -159,11 +140,9 @@ int cudaCheckStatus(cudaError_t cudaStatus, d_Ptrs dPtrs, const char* errorMessa
 
 void freeCudaMemory(d_Ptrs& dPtrs) {
 	cudaFree(dPtrs.d_currentFrontier);
-	cudaFree(dPtrs.d_currentFrontierSize);
 	cudaFree(dPtrs.d_neighbours);
 	cudaFree(dPtrs.d_nextFrontier);
 	cudaFree(dPtrs.d_nextFrontierSize);
 	cudaFree(dPtrs.d_offsets);
 	cudaFree(dPtrs.d_parents);
-	cudaFree(dPtrs.d_visited);
 }
