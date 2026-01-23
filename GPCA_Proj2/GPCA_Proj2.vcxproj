@@ -82,10 +82,12 @@
   <ItemGroup>
     <ClInclude Include="graph.h" />
     <ClInclude Include="kernel.cuh" />
+    <ClInclude Include="pathTester.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="graph.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="pathTester.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

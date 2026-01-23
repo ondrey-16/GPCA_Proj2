@@ -1,17 +1,32 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "graph.h"
 #include <fstream>
 #include <queue>
 #include <cmath>
 
-void Graph::pushEdge(int start, int end) {
+/// <summary>
+/// Modyfikuje listê s¹siedztwa grafu o now¹ dodan¹ krawêdŸ. Je¿eli trzeba, rozszerza odpowiednio listê do rozmiaru odpowiadaj¹cego maksymalnemu numerowi wierzcho³ka w grafie.
+/// Je¿eli format czytanego grafu jest dla grafu nieskierowanego, dodaje jeszcze krawêdŸ przeciwn¹.
+/// </summary>
+/// <param name="start">Wierzcho³ek pocz¹tkowy</param>
+/// <param name="end"Wierzcho³ek koñcowy></param>
+/// <param name="format">Format czytanego grafu</param>
+void Graph::pushEdge(int start, int end, const char* format) {
 	int max = std::max(start, end);
 
 	if (max >= this->graph.size()) {
 		this->graph.resize(max + 1);
 	}
 	this->graph[start].push_back(end);
+	if (strcmp(format, "txt_undir") == 0) {
+		this->graph[end].push_back(start);
+	}
 }
 
+/// <summary>
+/// Dokonuje przekszta³cenia reprezentacji grafu z list s¹siedztwa do reprezentacji CSR, inicjalizuj¹c odpowiednio tablice offsets i neighbours.
+/// </summary>
 void Graph::transformGraph() {
 	this->N = (int)this->graph.size();
 	this->offsets.resize(this->N + 1);
@@ -26,7 +41,14 @@ void Graph::transformGraph() {
 	offsets[this->N] = count;
 }
 
-bool Graph::readGraphFromFile(const char* filename) {
+
+/// <summary>
+/// Dokonuje odczytu pliku z krawêdziami rozpatrywanego grafu, inicjalizuj¹c przy tym listê s¹siedztwa.
+/// </summary>
+/// <param name="filename">Œcie¿ka do czytanego pliku</param>
+/// <param name="format">Format czytanego grafu</param>
+/// <returns>True, gdy poprawnie odczytano i zainicjalizowano graf</returns>
+bool Graph::readGraphFromFile(const char* filename, const char* format) {
 	FILE* file = fopen(filename, "r");
 
 	if (file == nullptr) {
@@ -42,14 +64,24 @@ bool Graph::readGraphFromFile(const char* filename) {
 			continue;
 		}
 		else if (sscanf(buff, "%d %d", &start, &end) == 2) {
-			pushEdge(start, end);
+			pushEdge(start, end, format);
 			this->EdgeCount++;
+			if (strcmp(format, "txt_undir") == 0) {
+				this->EdgeCount++;
+			}
 		}
 	}
 	transformGraph();
+	fclose(file);
 	return true;
 }
 
+/// <summary>
+/// Algorytm BFS dzia³aj¹cy na CPU na reprezentacji CSR grafu. Zwraca najkrótsz¹ œcie¿kê pomiêdzy zadanymi wierzcho³kami.
+/// </summary>
+/// <param name="start">Wierzcho³ek pocz¹tkowy</param>
+/// <param name="end"Wierzcho³ek koñcowy></param>
+/// <returns>Znaleziona najkrótsza œcie¿ka</returns>
 std::list<int> Graph::BFSCPU(int start, int end) {
 	if (start == end) {
 		return std::list<int>{start};
@@ -83,6 +115,7 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 	}
 
 	if (parents[end] == -1) {
+		delete[] parents;
 		return path;
 	}
 
@@ -95,7 +128,6 @@ std::list<int> Graph::BFSCPU(int start, int end) {
 	}
 
 	delete[] parents;
-
 	return path;
 }
 
